@@ -1,0 +1,69 @@
+name,category,meal,diet,cost,calories,protein,carbs,fat
+Poha,Main,Breakfast,V,13,270,6,48,6
+Idli Sambar (3 pcs),Main,Breakfast,V,16,280,9,52,3
+Upma,Main,Breakfast,V,12,250,6,40,8
+Masala Dosa,Main,Breakfast,V,18,330,7,50,11
+Aloo Paratha (2 pcs),Main,Breakfast,V,21,420,9,58,17
+Besan Chilla (2 pcs),Main,Breakfast,V,14,300,14,32,11
+Moong Dal Chilla (2 pcs),Main,Breakfast,V,16,280,15,34,7
+Bread Omelette (2 eggs),Main,Breakfast,N,23,360,17,30,18
+Boiled Eggs (2),Side,Breakfast,N,16,150,12,1,10
+Banana,Side,Breakfast,V,8,105,1,27,0
+Sprouts Salad,Side,Breakfast,V,10,140,10,22,1
+Curd Bowl,Side,Breakfast|Dinner,V,10,100,5,8,5
+Salad Plate,Side,Dinner,V,6,40,2,8,0
+Raita,Side,Dinner,V,9,90,4,8,4
+Kheer,Side,Dinner,V,18,220,6,34,6
+Tea,Beverage,Breakfast,V,5,70,2,10,2
+Coffee,Beverage,Breakfast,V,6,80,3,11,3
+Milk Glass,Beverage,Breakfast,V,10,150,8,12,8
+Banana Shake,Beverage,Breakfast,V,18,220,7,40,5
+Steamed Rice (2 cups),Staple,Lunch|Dinner,V,10,400,8,88,1
+Roti (4 pcs),Staple,Lunch|Dinner,V,10,340,11,68,4
+Jeera Rice,Staple,Lunch|Dinner,V,13,430,8,85,7
+Veg Pulao,Staple,Lunch|Dinner,V,16,450,9,80,9
+Dal Tadka,Dal,Lunch|Dinner,V,13,190,11,27,5
+Rajma,Dal,Lunch|Dinner,V,18,230,13,38,3
+Chole,Dal,Lunch|Dinner,V,18,260,12,38,7
+Sambar,Dal,Lunch|Dinner,V,10,130,6,20,3
+Moong Dal,Dal,Lunch|Dinner,V,12,180,12,26,3
+Kadhi,Dal,Lunch|Dinner,V,12,170,6,18,8
+Mixed Veg Curry,Curry,Lunch|Dinner,V,13,140,4,18,6
+Aloo Gobhi,Curry,Lunch|Dinner,V,13,170,4,24,7
+Soya Chunk Curry,Curry,Lunch|Dinner,V,18,240,22,18,9
+Paneer Curry,Curry,Lunch|Dinner,V,36,320,16,10,24
+Palak Paneer,Curry,Lunch|Dinner,V,34,290,14,12,21
+Egg Curry (2 eggs),Curry,Lunch|Dinner,N,23,260,14,8,18
+Chicken Curry,Curry,Lunch|Dinner,N,49,330,28,8,20
+Samosa,Snack,Snack,V,10,260,5,28,14
+Roasted Chana,Snack,Snack,V,8,180,10,28,3
+Veg Sandwich,Snack,Snack,V,18,250,7,36,8
+Peanut Chaat,Snack,Snack,V,12,230,9,18,14
+Boiled Corn,Snack,Snack,V,13,150,5,30,2
+Biscuits,Snack,Snack,V,6,140,2,22,5
+Fruit Plate,Snack,Snack,V,16,120,2,28,1
+Bread Butter Toast,Main,Breakfast,V,10,260,6,34,11
+Semiya Upma,Main,Breakfast,V,10,240,6,40,7
+Veg Sandwich Toast,Main,Breakfast,V,13,270,8,38,9
+Rava Idli (3 pcs),Main,Breakfast,V,12,260,7,44,6
+Boiled Chana,Side,Breakfast,V,8,160,9,26,2
+Orange,Side,Breakfast,V,9,62,1,15,0
+Peanut Butter Slice,Side,Breakfast,V,9,190,7,6,16
+Buttermilk,Beverage,Breakfast,V,5,60,3,5,3
+Hot Chocolate,Beverage,Breakfast,V,12,180,5,28,6
+Khichdi,Staple,Lunch|Dinner,V,10,420,13,72,8
+Lemon Rice,Staple,Lunch|Dinner,V,10,420,8,82,7
+Plain Paratha (3 pcs),Staple,Lunch|Dinner,V,11,420,9,56,17
+Dal Fry,Dal,Lunch|Dinner,V,12,200,11,28,6
+Masoor Dal,Dal,Lunch|Dinner,V,11,190,13,30,2
+Lobia,Dal,Lunch|Dinner,V,13,210,13,34,2
+Bhindi Masala,Curry,Lunch|Dinner,V,13,150,3,14,9
+Cabbage Sabzi,Curry,Lunch|Dinner,V,10,110,3,14,5
+Matar Aloo,Curry,Lunch|Dinner,V,12,190,7,28,6
+Baingan Bharta,Curry,Lunch|Dinner,V,12,140,3,14,8
+Murmura Bhel,Snack,Snack,V,7,150,4,28,3
+Bread Pakora,Snack,Snack,V,9,280,6,30,15
+Peanut Chikki,Snack,Snack,V,8,200,6,22,10
+Pickle and Papad,Side,Dinner,V,4,70,3,8,3
+Onion Salad,Side,Dinner,V,4,35,1,8,0
+Gulab Jamun,Side,Dinner,V,12,300,4,45,12

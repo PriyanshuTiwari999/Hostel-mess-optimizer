@@ -1,0 +1,5 @@
+students=200
+monthly_budget_per_student=3300.0
+calorie_target=2300.0
+protein_target=70.0
+diet=any

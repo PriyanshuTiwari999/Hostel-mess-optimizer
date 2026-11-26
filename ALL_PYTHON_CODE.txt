@@ -1,0 +1,973 @@
+HOSTEL MESS NUTRITION & BUDGET OPTIMIZER - COMPLETE PYTHON SOURCE
+
+========================================================================================
+main.py
+========================================================================================
+"""main.py - Hostel Mess Budget and Nutrition Optimizer (menu-driven program).
+
+Run with:  python main.py
+"""
+from datetime import date
+
+import budget_tracker
+import data_manager
+import nutrition_analysis
+import optimizer
+import report_generator
+from utils import get_choice, get_date, get_number, get_text, get_yes_no, money
+
+CATEGORIES = ["Main", "Side", "Beverage", "Staple", "Dal", "Curry", "Snack"]
+MEALS = ["Breakfast", "Lunch", "Dinner", "Snack"]
+EXPENSE_CATEGORIES = ["Vegetables", "Grains & Pulses", "Dairy", "Egg & Meat", "Gas & Fuel", "Wages & Other"]
+
+
+def daily_budget(settings):
+    return settings["monthly_budget_per_student"] / 30
+
+
+# ---------------------------------------------------------------- menu actions
+def view_foods(foods):
+    print(f"\n{'No.':<4}{'Name':<27}{'Category':<10}{'Diet':<5}{'Rs.':>5}{'kcal':>6}{'Prot': >6}{'Fat':>5}")
+    print("-" * 68)
+    for number, food in enumerate(sorted(foods, key=lambda f: (f["category"], f["name"])), start=1):
+        print(f"{number:<4}{food['name']:<27}{food['category']:<10}{food['diet']:<5}"
+              f"{food['cost']:>5.0f}{food['calories']:>6.0f}{food['protein']:>6.0f}{food['fat']:>5.0f}")
+    print(f"\nTotal items: {len(foods)}   (V = vegetarian, N = non-vegetarian)")
+
+
+def add_food(foods):
+    print("\n--- Add a new food item ---")
+    name = get_text("Name: ")
+    if any(f["name"].lower() == name.lower() for f in foods):
+        print("  This item already exists. Nothing added.")
+        return
+    category = get_choice(f"Category ({'/'.join(CATEGORIES)}): ", CATEGORIES)
+    meal = get_choice(f"Meal ({'/'.join(MEALS)}): ", MEALS)
+    diet = get_choice("Diet (V = veg, N = non-veg): ", ["V", "N"])
+    food = {
+        "name": name, "category": category, "meals": {meal}, "diet": diet,
+        "cost": get_number("Cost per serving (Rs.): ", float, 0.5, 1000),
+        "calories": get_number("Calories (kcal): ", float, 0, 3000),
+        "protein": get_number("Protein (g): ", float, 0, 200),
+        "carbs": get_number("Carbohydrates (g): ", float, 0, 500),
+        "fat": get_number("Fat (g): ", float, 0, 300),
+    }
+    foods.append(food)
+    data_manager.save_food(food)
+    print(f"  '{name}' saved to food_items.csv.")
+
+
+def rank_menu(foods, settings):
+    print("\n--- Rank foods by value ---")
+    for key, (label, _) in nutrition_analysis.RANK_CRITERIA.items():
+        print(f"  {key}. {label}")
+    choice = get_choice("Choose criterion (1-3): ", list(nutrition_analysis.RANK_CRITERIA))
+    top_n = get_number("How many items to show (1-20): ", int, 1, 20)
+    label, ranked = nutrition_analysis.rank_foods(foods, choice, settings["diet"])
+    print(f"\nTop {top_n} by {label}")
+    print("-" * 62)
+    for position, food in enumerate(ranked[:top_n], start=1):
+        print(f"{position:>2}. {food['name']:<27} Rs.{food['cost']:>4.0f}  "
+              f"{food['protein'] / food['cost']:>5.2f} g/Rs.  {food['calories'] / food['cost']:>5.1f} kcal/Rs.")
+
+
+def today_menu(foods, settings):
+    budget = daily_budget(settings)
+    if get_yes_no(f"Use the default daily budget of {money(budget)} per student?") is False:
+        budget = get_number("Enter daily budget per student (Rs.): ", float, 1, 5000)
+    plan = optimizer.build_daily_plan(foods, budget, settings["calorie_target"],
+                                      settings["protein_target"], settings["diet"])
+    show_plan(plan, "OPTIMIZED DAILY MENU", settings, budget)
+
+
+def show_plan(plan, title, settings, budget):
+    if plan is None:
+        print("  Cannot build a menu: some meal slot has no food items. Add more items first .")
+        return
+    cal_t, prot_t = settings["calorie_target"], settings["protein_target"]
+    if not plan["feasible"]:
+        print(f"\n  The cheapest possible menu costs {money(plan['cost'])}, which is above the "
+              f"budget of {money(budget)}. Increase the budget or add cheaper items.")
+        return
+    print("\n" + report_generator.format_plan(plan, title, cal_t, prot_t, budget))
+    if optimizer.targets_met(plan, cal_t, prot_t):
+        print(f"Result: all nutrition targets met. Money left unspent: {money(budget - plan[ 'cost'])}")
+    else:
+        print("Result: budget is too low to meet every target. Missing: ", end="")
+        missing = []
+        if plan["calories"] < 0.9 * cal_t:
+            missing.append(f"{cal_t - plan['calories']:.0f} kcal")
+        if plan["protein"] < prot_t:
+            missing.append(f"{prot_t - plan['protein']:.0f} g protein")
+        print(", ".join(missing) or "calories slightly outside the 90-110% range")
+
+
+def weekly_menu(foods, settings):
+    budget = daily_budget(settings)
+    week = optimizer.build_weekly_plan(foods, budget, settings["calorie_target"],
+                                       settings["protein_target"], settings["diet"])
+    if not week or not week[0]["feasible"]:
+        print(f"  Cannot build the weekly menu within {money(budget)} per day.")
+        return None
+    print(f"\n{'Day':<11}{'Breakfast':<22}{'Lunch (staple + dal)':<34}{'Rs.':>5}{'kcal':>6}{ 'Prot':>6}")
+    print("-" * 84)
+    for plan in week:
+        names = {slot: food["name"] for slot, food in plan["items"]}
+        lunch = names[("Lunch", "Staple")].split(" (")[0] + " + " + names[("Lunch", "Dal")]
+        print(f"{plan['day']:<11}{names[('Breakfast', 'Main')][:20]:<22}{lunch[:32]:<34}"
+              f"{plan['cost']:>5.0f}{plan['calories']:>6.0f}{plan['protein']:>6.0f}")
+    total = sum(p["cost"] for p in week)
+    print("-" * 84)
+    print(f"Weekly cost per student: {money(total)}  |  for {settings['students']} students: "
+          f"{money(total * settings['students'])}")
+    return week
+
+
+def compare_scenarios(foods, settings):
+    cal_t, prot_t = settings["calorie_target"], settings["protein_target"]
+    base = daily_budget(settings)
+    budgets = [round(base * f) for f in (0.8, 0.9, 1.0, 1.2)]
+    print("\n--- Budget scenarios (daily, per student) ---")
+    print(f"{'Budget':>8}{'Cost':>8}{'kcal':>8}{'Protein':>9}  Status")
+    print("-" * 56)
+    for budget, plan in optimizer.compare_budgets(foods, budgets, cal_t, prot_t, settings["diet"]):
+        if plan is None or not plan["feasible"]:
+            minimum = f"{plan['cost']:.0f}" if plan else "-"
+            print(f"{budget:>8}{minimum:>8}{'-':>8}{'-':>9}  Not possible (cheapest menu costs Rs. {minimum})")
+        else:
+            status = "Targets met" if optimizer.targets_met(plan, cal_t, prot_t) else "Targets NOT met"
+            print(f"{budget:>8}{plan['cost']:>8.0f}{plan['calories']:>8.0f}{plan['protein']: >9.0f}  {status}")
+    print("\n--- Vegetarian vs any diet at the default budget ---")
+    for diet in ("veg", "any"):
+        plan = optimizer.build_daily_plan(foods, base, cal_t, prot_t, diet)
+        if plan and plan["feasible"]:
+            print(f"{diet:>4}: cost {plan['cost']:.0f}, {plan['calories']:.0f} kcal, {plan['protein']:.0f} g protein")
+
+
+def analyse_my_day(foods, settings):
+    print("\nType the foods eaten today, separated by commas")
+    print("Example: Poha, Banana, Tea, Roti, Dal Tadka, Aloo Gobhi")
+    names = [n for n in get_text("Foods: ").split(",") if n.strip()]
+    budget = daily_budget(settings)
+    matched, unknown, totals, advice = nutrition_analysis.analyse_meal(
+        foods, names, budget, settings["calorie_target"], settings["protein_target"])
+    if unknown:
+        print("  Not found in database: " + ", ".join(unknown))
+    if not matched:
+        print("  No valid food items to analyse.")
+        return
+    print(f"\nMatched: {', '.join(f['name'] for f in matched)}")
+    print(f"Cost {totals['cost']:.0f} Rs. | {totals['calories']:.0f} kcal | "
+          f"{totals['protein']:.0f} g protein | {totals['fat']:.0f} g fat")
+    for line in advice:
+        print(" *", line)
+
+
+def record_expense():
+    print("\n--- Record a mess expense ---")
+    expense_date = get_date("Date")
+    category = get_choice(f"Category ({', '.join(EXPENSE_CATEGORIES)}): ", EXPENSE_CATEGORIES)
+    amount = get_number("Amount (Rs.): ", float, 1, 10_000_000)
+    note = input("Note (optional): ").strip().replace(",", " ")
+    data_manager.add_expense(expense_date, category, amount, note)
+    print("  Expense saved.")
+
+
+def monthly_summary(settings, save_chart=False):
+    expenses = data_manager.load_expenses()
+    year = get_number("Year (e.g. 2026): ", int, 2000, 2100)
+    month = get_number("Month (1-12): ", int, 1, 12)
+    s = budget_tracker.summarize_month(expenses, year, month, settings["students"],
+                                       settings["monthly_budget_per_student"])
+    if s is None:
+        print("  No expenses recorded for that month.")
+        return
+    print(f"\nMONTHLY BUDGET SUMMARY  {year}-{month:02d}")
+    print("-" * 60)
+    print(f"Monthly budget        : {money(s['budget'])}")
+    print(f"Spent so far          : {money(s['total'])}  ({s['percent_used']:.1f}% used, "
+          f"day {s['days_elapsed']} of {s['days_in_month']})")
+    print(f"Projected month total : {money(s['projected'])}")
+    print(f"Cost per student/day  : {money(s['actual_per_student_day'])} actual vs "
+          f"{money(s['planned_per_student_day'])} planned")
+    print(f"Highest spending day  : {s['peak_day']} ({money(s['peak_amount'])})")
+    print("\nSpending by category:")
+    for category, amount in sorted(s["by_category"].items(), key=lambda x: x[1], reverse=True):
+        print(f"  {category:<18}{money(amount):>18}  {amount / s['total'] * 100:>5.1f}%")
+    print("\nAlerts:")
+    for alert in s["alerts"]:
+        print(" !", alert)
+    if save_chart and report_generator.plot_expenses(s, "expense_chart.png"):
+        print("\nChart saved as expense_chart.png")
+
+
+def save_reports(foods, settings):
+    week = weekly_menu(foods, settings)
+    if not week:
+        return
+    report_generator.save_weekly_report(week, settings, "weekly_menu_report.txt")
+    print("\nSaved: weekly_menu_report.txt")
+    if report_generator.plot_weekly(week, daily_budget(settings), "weekly_plan_chart.png"):
+        print("Saved: weekly_plan_chart.png")
+    else:
+        print("(Install matplotlib to also get the chart: pip install matplotlib)")
+    if get_yes_no("Also create the expense chart?"):
+        monthly_summary(settings, save_chart=True)
+
+
+def change_settings(settings):
+    print("\n--- Settings (press Enter to keep the current value) ---")
+    prompts = [("students", int, 1, 5000, "Number of students"),
+               ("monthly_budget_per_student", float, 500, 20000, "Monthly budget per student (Rs.)"),
+               ("calorie_target", float, 1200, 4500, "Calorie target per day (kcal)"),
+               ("protein_target", float, 20, 250, "Protein target per day (g)")]
+    for key, kind, low, high, label in prompts:
+        while True:
+            text = input(f"{label} [{settings[key]}]: ").strip()
+            if text == "":
+                break
+            try:
+                value = kind(text)
+            except ValueError:
+                print("  Invalid number.")
+                continue
+            if low <= value <= high:
+                settings[key] = value
+                break
+            print(f"  Value must be between {low} and {high}.")
+    settings["diet"] = get_choice(f"Diet (any/veg) [{settings['diet']}]: ", ["any", "veg"])
+    data_manager.save_settings(settings)
+    print("  Settings saved.")
+
+
+# ------------------------------------------------------------------- main loop
+MENU = """
+==================== HOSTEL MESS BUDGET & NUTRITION OPTIMIZER ====================
+ 1. View food database          7. Analyse what I ate today
+ 2. Add a new food item         8. Record a mess expense
+ 3. Rank foods by value         9. Monthly budget summary & alerts
+ 4. Optimized menu for today   10. Save weekly report & charts
+ 5. Optimized weekly menu      11. Change settings
+ 6. Compare budget scenarios    0. Exit
+==================================================================================="""
+
+
+def main():
+    foods = data_manager.load_foods()
+    settings = data_manager.load_settings()
+    if not foods:
+        print("No food data available. Please check food_items.csv.")
+        return
+    while True:
+        print(MENU)
+        print(f"Diet: {settings['diet']} | Targets: {settings['calorie_target']:.0f} kcal, "
+              f"{settings['protein_target']:.0f} g protein | Budget: {money(daily_budget(settings))}/student/day")
+        try:
+            choice = input("Enter your choice (0-11): ").strip()
+            if choice == "1":
+                view_foods(foods)
+            elif choice == "2":
+                add_food(foods)
+            elif choice == "3":
+                rank_menu(foods, settings)
+            elif choice == "4":
+                today_menu(foods, settings)
+            elif choice == "5":
+                weekly_menu(foods, settings)
+            elif choice == "6":
+                compare_scenarios(foods, settings)
+            elif choice == "7":
+                analyse_my_day(foods, settings)
+            elif choice == "8":
+                record_expense()
+            elif choice == "9":
+                monthly_summary(settings)
+            elif choice == "10":
+                save_reports(foods, settings)
+            elif choice == "11":
+                change_settings(settings)
+            elif choice == "0":
+                print("Thank you for using the Mess Optimizer. Goodbye!")
+                break
+            else:
+                print("  Invalid choice. Please enter a number from 0 to 11.")
+        except (EOFError, KeyboardInterrupt):
+            print("\nExiting. Goodbye!")
+            break
+
+
+if __name__ == "__main__":
+    main()
+
+========================================================================================
+utils.py
+========================================================================================
+"""utils.py - input validation and small helper functions used by every module."""
+from datetime import date, datetime
+
+
+def get_number(prompt, kind=float, low=None, high=None):
+    """Keep asking until the user enters a valid number between low and high."""
+    while True:
+        text = input(prompt).strip()
+        try:
+            value = kind(text)
+        except ValueError:
+            print("  Invalid input. Please enter a valid number.")
+            continue
+        if value != value or value in (float("inf"), float("-inf")):
+            print("  Invalid input. Please enter a normal number.")
+            continue
+        if low is not None and value < low:
+            print(f"  Value must be at least {low}.")
+            continue
+        if high is not None and value > high:
+            print(f"  Value must be at most {high}.")
+            continue
+        return value
+
+
+def get_text(prompt):
+    """Keep asking until the user types something (not blank)."""
+    while True:
+        text = input(prompt).strip()
+        if text:
+            return text
+        print("  This field cannot be empty.")
+
+
+def get_choice(prompt, options):
+    """Ask until the answer matches one of the options (case-insensitive)."""
+    lookup = {option.lower(): option for option in options}
+    while True:
+        text = input(prompt).strip().lower()
+        if text in lookup:
+            return lookup[text]
+        print("  Please choose one of: " + ", ".join(options))
+
+
+def get_yes_no(prompt):
+    """Return True for yes and False for no."""
+    while True:
+        text = input(prompt + " (y/n): ").strip().lower()
+        if text in ("y", "yes"):
+            return True
+        if text in ("n", "no"):
+            return False
+        print("  Please type y or n.")
+
+
+def get_date(prompt):
+    """Read a date as YYYY-MM-DD. Pressing Enter gives today's date."""
+    while True:
+        text = input(prompt + " [YYYY-MM-DD, Enter = today]: ").strip()
+        if text == "":
+            return date.today()
+        try:
+            return datetime.strptime(text, "%Y-%m-%d").date()
+        except ValueError:
+            print("  Invalid date. Example of a valid date: 2026-11-15")
+
+
+def money(amount):
+    """Format a number as rupees, e.g. Rs. 1,250.50"""
+    return f"Rs. {amount:,.2f}"
+
+========================================================================================
+data_manager.py
+========================================================================================
+"""data_manager.py - reads and writes all TXT / CSV files (food items, settings, expenses)."""
+import csv
+import os
+from datetime import datetime
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FOOD_FILE = os.path.join(BASE_DIR, "food_items.csv")
+EXPENSE_FILE = os.path.join(BASE_DIR, "expenses.csv")
+SETTINGS_FILE = os.path.join(BASE_DIR, "settings.txt")
+
+FOOD_FIELDS = ["name", "category", "meal", "diet", "cost", "calories", "protein", "carbs", "fat"]
+NUMERIC_FIELDS = ["cost", "calories", "protein", "carbs", "fat"]
+
+DEFAULT_SETTINGS = {
+    "students": 200,                       # students eating in the mess
+    "monthly_budget_per_student": 3300.0,  # Rs. per student per month
+    "calorie_target": 2300.0,              # kcal per student per day
+    "protein_target": 70.0,                # grams per student per day
+    "diet": "any",                         # "any" or "veg"
+}
+
+
+# ------------------------------------------------------------------ food items
+def load_foods():
+    """Read food_items.csv and return a list of dictionaries. Bad rows are skipped."""
+    foods = []
+    try:
+        with open(FOOD_FILE, newline="", encoding="utf-8") as file:
+            reader = csv.DictReader(file)
+            for line_no, row in enumerate(reader, start=2):
+                try:
+                    food = {
+                        "name": row["name"].strip(),
+                        "category": row["category"].strip(),
+                        "meals": {m.strip() for m in row["meal"].split("|")},  # a set
+                        "diet": row["diet"].strip().upper(),
+                    }
+                    for field in NUMERIC_FIELDS:
+                        food[field] = float(row[field])
+                        if food[field] < 0:
+                            raise ValueError("negative value")
+                    if food["name"] == "" or food["cost"] <= 0 or food["diet"] not in ("V", "N"):
+                        raise ValueError("invalid data")
+                    foods.append(food)
+                except (KeyError, ValueError, AttributeError):
+                    print(f"  Warning: skipped invalid row {line_no} in food_items.csv")
+    except FileNotFoundError:
+        print("  Error: food_items.csv was not found.")
+    return foods
+
+
+def save_food(food):
+    """Append one new food item to food_items.csv."""
+    new_file = not os.path.exists(FOOD_FILE)
+    with open(FOOD_FILE, "a", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        if new_file:
+            writer.writerow(FOOD_FIELDS)
+        writer.writerow([
+            food["name"], food["category"], "|".join(sorted(food["meals"])), food["diet"],
+            food["cost"], food["calories"], food["protein"], food["carbs"], food["fat"],
+        ])
+
+
+# -------------------------------------------------------------------- settings
+def load_settings():
+    """Read settings.txt (key=value lines). Missing or bad values fall back to defaults."""
+    settings = dict(DEFAULT_SETTINGS)
+    try:
+        with open(SETTINGS_FILE, encoding="utf-8") as file:
+            for line in file:
+                if "=" not in line:
+                    continue
+                key, value = line.strip().split("=", 1)
+                if key in settings:
+                    try:
+                        settings[key] = type(DEFAULT_SETTINGS[key])(value)
+                    except ValueError:
+                        pass
+    except FileNotFoundError:
+        save_settings(settings)
+    return settings
+
+
+def save_settings(settings):
+    with open(SETTINGS_FILE, "w", encoding="utf-8") as file:
+        for key, value in settings.items():
+            file.write(f"{key}={value}\n")
+
+
+# -------------------------------------------------------------------- expenses
+def load_expenses():
+    """Return a list of expense dictionaries: date, category, amount, note."""
+    expenses = []
+    try:
+        with open(EXPENSE_FILE, newline="", encoding="utf-8") as file:
+            for line_no, row in enumerate(csv.DictReader(file), start=2):
+                try:
+                    expenses.append({
+                        "date": datetime.strptime(row["date"], "%Y-%m-%d").date(),
+                        "category": row["category"].strip(),
+                        "amount": float(row["amount"]),
+                        "note": row.get("note", ""),
+                    })
+                except (KeyError, ValueError):
+                    print(f"  Warning: skipped invalid row {line_no} in expenses.csv")
+    except FileNotFoundError:
+        pass  # no expenses recorded yet
+    return expenses
+
+
+def add_expense(expense_date, category, amount, note):
+    new_file = not os.path.exists(EXPENSE_FILE)
+    with open(EXPENSE_FILE, "a", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        if new_file:
+            writer.writerow(["date", "category", "amount", "note"])
+        writer.writerow([expense_date.isoformat(), category, amount, note])
+
+========================================================================================
+optimizer.py
+========================================================================================
+"""optimizer.py - the core computational feature.
+
+Builds a daily / weekly mess menu that gets as close as possible to the calorie and
+protein targets without crossing the budget.  Method: greedy local search.
+  1. Pick the cheapest food for every meal slot (the "minimum cost" menu).
+  2. Repeatedly try replacing ONE item with another item of the same slot.
+  3. Take the replacement that reduces the nutrition penalty the most per extra rupee,
+     as long as the total stays inside the budget.
+  4. Stop when no replacement improves the menu.
+"""
+
+# A slot is a tuple (meal, category). One food is chosen for each slot every day.
+SLOTS = [
+    ("Breakfast", "Main"), ("Breakfast", "Side"), ("Breakfast", "Beverage"),
+    ("Lunch", "Staple"), ("Lunch", "Dal"), ("Lunch", "Curry"),
+    ("Snack", "Snack"),
+    ("Dinner", "Staple"), ("Dinner", "Dal"), ("Dinner", "Curry"), ("Dinner", "Side"),
+]
+
+WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+PROTEIN_WEIGHT = 2.0   # missing protein is punished twice as much as missing calories
+CALORIE_UPPER = 1.10   # calories above 110 % of the target are also penalised
+FAT_SHARE = 0.30       # fat should not give more than 30 % of the calories
+
+
+def sum_nutrients(foods):
+    """Add up cost and nutrients of a list of foods."""
+    totals = {"cost": 0.0, "calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0}
+    for food in foods:
+        for key in totals:
+            totals[key] += food[key]
+    return totals
+
+
+def plan_score(foods, calorie_target, protein_target):
+    """Penalty score of a menu. 0 means all targets are satisfied; lower is better."""
+    t = sum_nutrients(foods)
+    score = 0.0
+    if t["calories"] < calorie_target:
+        score += (calorie_target - t["calories"]) / calorie_target
+    elif t["calories"] > CALORIE_UPPER * calorie_target:
+        score += (t["calories"] - CALORIE_UPPER * calorie_target) / calorie_target
+    if t["protein"] < protein_target:
+        score += PROTEIN_WEIGHT * (protein_target - t["protein"]) / protein_target
+    max_fat = FAT_SHARE * calorie_target / 9          # 1 g fat = 9 kcal
+    if t["fat"] > max_fat:
+        score += (t["fat"] - max_fat) / max_fat
+    return score
+
+
+def get_candidates(foods, slot, diet, avoid_names=None):
+    """All foods that can fill a slot (matching meal, category and diet)."""
+    meal, category = slot
+    options = [f for f in foods
+               if meal in f["meals"] and f["category"] == category
+               and (diet == "any" or f["diet"] == "V")]
+    if avoid_names:                                  # variety rule: skip recently served items
+        different = [f for f in options if f["name"] not in avoid_names]
+        if different:
+            options = different
+    return options
+
+
+def build_daily_plan(foods, budget, calorie_target, protein_target, diet="any", avoid=None):
+    """Return a plan dictionary:
+         items     - list of (slot, food)
+         feasible  - False if even the cheapest menu is above the budget
+         cost, calories, protein, carbs, fat, score
+       or None if some slot has no food at all."""
+    avoid = avoid or {}
+    candidates = {}
+    for slot in SLOTS:
+        options = get_candidates(foods, slot, diet, avoid.get(slot))
+        if not options:
+            return None
+        candidates[slot] = options
+
+    # Step 1: cheapest menu (no food repeated within the same day)
+    chosen, used = {}, set()
+    for slot in SLOTS:
+        for food in sorted(candidates[slot], key=lambda f: f["cost"]):
+            if food["name"] not in used:
+                chosen[slot] = food
+                used.add(food["name"])
+                break
+        else:
+            return None
+    cost = sum_nutrients(chosen.values())["cost"]
+    feasible = cost <= budget
+
+    # Steps 2-4: improve the menu while there is budget left
+    while feasible:
+        current = plan_score(chosen.values(), calorie_target, protein_target)
+        best_move, best_ratio = None, 0.0
+        for slot in SLOTS:
+            for food in candidates[slot]:
+                if food["name"] in used:
+                    continue
+                new_cost = cost - chosen[slot]["cost"] + food["cost"]
+                if new_cost > budget:
+                    continue
+                trial = dict(chosen)
+                trial[slot] = food
+                gain = current - plan_score(trial.values(), calorie_target, protein_target)
+                if gain <= 1e-9:
+                    continue
+                extra = max(food["cost"] - chosen[slot]["cost"], 1.0)
+                if gain / extra > best_ratio:
+                    best_ratio, best_move = gain / extra, (slot, food)
+        if best_move is None:
+            break
+        slot, food = best_move
+        used.discard(chosen[slot]["name"])
+        cost += food["cost"] - chosen[slot]["cost"]
+        chosen[slot] = food
+        used.add(food["name"])
+
+    plan = sum_nutrients(chosen.values())
+    plan["items"] = [(slot, chosen[slot]) for slot in SLOTS]
+    plan["feasible"] = feasible
+    plan["score"] = plan_score(chosen.values(), calorie_target, protein_target)
+    return plan
+
+
+def targets_met(plan, calorie_target, protein_target):
+    """True when calories are within 90-110 % of target and protein is at least the target."""
+    return (0.90 * calorie_target <= plan["calories"] <= CALORIE_UPPER * calorie_target
+            and plan["protein"] >= protein_target)
+
+
+def build_weekly_plan(foods, budget, calorie_target, protein_target, diet="any"):
+    """Seven daily plans. A slot avoids items served in the previous two days (if the budget allows)."""
+    week, history = [], []
+    for day in WEEK_DAYS:
+        plan = None
+        # Variety is a soft rule: try avoiding the last 2 days, then the last day, then nothing.
+        # The budget is a hard rule: a plan above the budget is never accepted.
+        for window in (2, 1, 0):
+            recent = history[-window:] if window else []
+            avoid = {slot: {past[slot] for past in recent} for slot in SLOTS}
+            plan = build_daily_plan(foods, budget, calorie_target, protein_target, diet, avoid)
+            if plan is not None and plan["feasible"]:
+                break
+        if plan is None:
+            return []
+        plan["day"] = day
+        week.append(plan)
+        history.append({slot: food["name"] for slot, food in plan["items"]})
+    return week
+
+
+def compare_budgets(foods, budgets, calorie_target, protein_target, diet="any"):
+    """Build one daily plan for each budget so the trade-off can be compared."""
+    results = []
+    for budget in budgets:
+        plan = build_daily_plan(foods, budget, calorie_target, protein_target, diet)
+        results.append((budget, plan))
+    return results
+
+========================================================================================
+nutrition_analysis.py
+========================================================================================
+"""nutrition_analysis.py - ranking foods by value and analysing a meal the user has eaten."""
+from optimizer import sum_nutrients, FAT_SHARE, CALORIE_UPPER
+
+RANK_CRITERIA = {
+    "1": ("Protein per rupee (g/Rs.)", lambda f: f["protein"] / f["cost"]),
+    "2": ("Calories per rupee (kcal/Rs.)", lambda f: f["calories"] / f["cost"]),
+    "3": ("Lowest cost first (Rs.)", lambda f: -f["cost"]),
+}
+
+
+def rank_foods(foods, criterion_key, diet="any"):
+    """Return foods sorted from best to worst according to the chosen criterion."""
+    label, key_function = RANK_CRITERIA[criterion_key]
+    pool = [f for f in foods if diet == "any" or f["diet"] == "V"]
+    return label, sorted(pool, key=key_function, reverse=True)
+
+
+def find_food(foods, text):
+    """Find a food by name: exact match first, then partial match (case-insensitive)."""
+    text = text.strip().lower()
+    for food in foods:
+        if food["name"].lower() == text:
+            return food
+    for food in foods:
+        if text and text in food["name"].lower():
+            return food
+    return None
+
+
+def analyse_meal(foods, names, budget, calorie_target, protein_target):
+    """Compare what a student ate in a day with the targets.
+    Returns (matched foods, unknown names, totals, list of advice strings)."""
+    matched, unknown = [], []
+    for name in names:
+        food = find_food(foods, name)
+        if food is None:
+            unknown.append(name)
+        else:
+            matched.append(food)
+
+    totals = sum_nutrients(matched)
+    advice = []
+    if matched:
+        if totals["calories"] < 0.90 * calorie_target:
+            advice.append(f"Calories are low ({totals['calories']:.0f} of {calorie_target:.0f} kcal). "
+                          "Add a staple such as rice or roti.")
+        elif totals["calories"] > CALORIE_UPPER * calorie_target:
+            advice.append("Calories are above 110% of the target. Reduce fried items or large portions.")
+        if totals["protein"] < protein_target:
+            eaten = {f["name"] for f in matched}
+            best = [f for f in rank_foods(foods, "1")[1] if f["name"] not in eaten][:3]
+            names_text = ", ".join(f["name"] for f in best)
+            advice.append(f"Protein is low ({totals['protein']:.0f} of {protein_target:.0f} g). "
+                          f"Best-value protein options: {names_text}.")
+        max_fat = FAT_SHARE * calorie_target / 9
+        if totals["fat"] > max_fat:
+            advice.append(f"Fat is high ({totals['fat']:.0f} g; limit about {max_fat:.0f} g) . "
+                          "Choose boiled or steamed items instead of fried ones.")
+        if totals["cost"] > budget:
+            advice.append(f"Cost (Rs. {totals['cost']:.0f}) is above the daily budget (Rs. { budget:.0f}).")
+        if not advice:
+            advice.append("Well balanced! All targets are met within the budget.")
+    return matched, unknown, totals, advice
+
+========================================================================================
+budget_tracker.py
+========================================================================================
+"""budget_tracker.py - monthly mess expense summary, projection and rule-based alerts."""
+import calendar
+
+
+def summarize_month(expenses, year, month, students, monthly_budget_per_student):
+    """Analyse the expenses of one month. Returns a dictionary, or None if there is no data. """
+    rows = [e for e in expenses if e["date"].year == year and e["date"].month == month]
+    if not rows:
+        return None
+
+    total = sum(e["amount"] for e in rows)
+    by_category, by_day = {}, {}
+    for e in rows:
+        by_category[e["category"]] = by_category.get(e["category"], 0.0) + e["amount"]
+        by_day[e["date"]] = by_day.get(e["date"], 0.0) + e["amount"]
+
+    days_in_month = calendar.monthrange(year, month)[1]
+    days_elapsed = max(d.day for d in by_day)              # last day with a record
+    budget = students * monthly_budget_per_student
+    projected = total / days_elapsed * days_in_month
+    peak_day = max(by_day, key=by_day.get)
+
+    summary = {
+        "year": year, "month": month, "total": total, "budget": budget,
+        "percent_used": total / budget * 100,
+        "days_elapsed": days_elapsed, "days_in_month": days_in_month,
+        "projected": projected,
+        "actual_per_student_day": total / (students * days_elapsed),
+        "planned_per_student_day": monthly_budget_per_student / days_in_month,
+        "by_category": by_category, "peak_day": peak_day, "peak_amount": by_day[peak_day],
+    }
+    summary["alerts"] = make_alerts(summary)
+    return summary
+
+
+def make_alerts(s):
+    """Simple rule-based alerts."""
+    alerts = []
+    month_elapsed_pct = s["days_elapsed"] / s["days_in_month"] * 100
+    if s["percent_used"] >= 100:
+        alerts.append("CRITICAL: The monthly budget has already been exceeded.")
+    elif s["projected"] > s["budget"]:
+        over = s["projected"] - s["budget"]
+        alerts.append(f"WARNING: At the current rate the month will end Rs. {over:,.0f} over budget.")
+    if s["percent_used"] > month_elapsed_pct + 10 and s["percent_used"] < 100:
+        alerts.append(f"WARNING: {s['percent_used']:.0f}% of the budget is used but only "
+                      f"{month_elapsed_pct:.0f}% of the month has passed.")
+    for category, amount in sorted(s["by_category"].items(), key=lambda x: x[1], reverse=True):
+        share = amount / s["total"] * 100
+        if share > 35:
+            alerts.append(f"NOTE: '{category}' takes {share:.0f}% of all spending (limit 35% ). Check for savings.")
+    if not alerts:
+        alerts.append("OK: Spending is on track for the month.")
+    return alerts
+
+========================================================================================
+report_generator.py
+========================================================================================
+"""report_generator.py - formatted text output, report file and charts."""
+from datetime import date
+from utils import money
+
+LINE = "-" * 78
+
+
+def format_plan(plan, title, calorie_target, protein_target, budget):
+    """Return a printable table for one daily plan."""
+    lines = [title, LINE, f"{'Meal':<10}{'Item':<28}{'Rs.':>6}{'kcal':>7}{'Prot(g)':>9}{'Fat (g)':>8}", LINE]
+    last_meal = ""
+    for (meal, category), food in plan["items"]:
+        shown_meal = meal if meal != last_meal else ""
+        last_meal = meal
+        lines.append(f"{shown_meal:<10}{food['name']:<28}{food['cost']:>6.0f}{food['calories ']:>7.0f}"
+                     f"{food['protein']:>9.0f}{food['fat']:>8.0f}")
+    lines.append(LINE)
+    lines.append(f"{'TOTAL':<38}{plan['cost']:>6.0f}{plan['calories']:>7.0f}{plan['protein'] :>9.0f}{plan['fat']:>8.0f}")
+    lines.append(f"{'TARGET':<38}{budget:>6.0f}{calorie_target:>7.0f}{protein_target:>9.0f}" )
+    return "\n".join(lines)
+
+
+def save_weekly_report(week, settings, filename):
+    """Write the weekly menu and a short cost summary into a TXT file."""
+    budget = settings["monthly_budget_per_student"] / 30
+    cal_t, prot_t = settings["calorie_target"], settings["protein_target"]
+    lines = ["HOSTEL MESS WEEKLY MENU REPORT", f"Generated on: {date.today()}",
+             f"Students: {settings['students']}   Diet: {settings['diet']}   "
+             f"Daily budget per student: {money(budget)}", ""]
+    for plan in week:
+        lines.append(format_plan(plan, plan["day"], cal_t, prot_t, budget))
+        lines.append("")
+    weekly_cost = sum(p["cost"] for p in week)
+    avg_cal = sum(p["calories"] for p in week) / len(week)
+    avg_prot = sum(p["protein"] for p in week) / len(week)
+    lines += ["WEEK SUMMARY", LINE,
+              f"Cost per student for the week : {money(weekly_cost)}",
+              f"Cost for all {settings['students']} students   : {money(weekly_cost * settings['students'])}",
+              f"Average calories per day      : {avg_cal:.0f} kcal",
+              f"Average protein per day       : {avg_prot:.0f} g"]
+    with open(filename, "w", encoding="utf-8") as file:
+        file.write("\n".join(lines) + "\n")
+
+
+def plot_weekly(week, budget, filename):
+    """Save a chart of daily cost (bars) and protein (line). Returns False if matplotlib ismissing."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return False
+    days = [p["day"][:3] for p in week]
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.bar(days, [p["cost"] for p in week], color="#4C9F70", label="Cost per student (Rs.)")
+    ax.axhline(budget, color="red", linestyle="--", label=f"Daily budget (Rs. {budget:.0f})" )
+    ax.set_ylabel("Rupees")
+    ax2 = ax.twinx()
+    ax2.plot(days, [p["protein"] for p in week], color="#1f4e79", marker="o", label="Protein (g)")
+    ax2.set_ylabel("Protein (g)")
+    ax.set_title("Weekly Mess Menu: Cost and Protein per Student")
+    handles = ax.get_legend_handles_labels()[0] + ax2.get_legend_handles_labels()[0]
+    labels = ax.get_legend_handles_labels()[1] + ax2.get_legend_handles_labels()[1]
+    ax.legend(handles, labels, loc="lower right", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(filename, dpi=120)
+    plt.close(fig)
+    return True
+
+
+def plot_expenses(summary, filename):
+    """Save a bar chart of spending by category."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return False
+    items = sorted(summary["by_category"].items(), key=lambda x: x[1], reverse=True)
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.bar([c for c, _ in items], [a for _, a in items], color="#d98e32")
+    ax.set_ylabel("Rupees")
+    ax.set_title(f"Mess Spending by Category ({summary['year']}-{summary['month']:02d})")
+    plt.setp(ax.get_xticklabels(), rotation=20)
+    fig.tight_layout()
+    fig.savefig(filename, dpi=120)
+    plt.close(fig)
+    return True
+
+========================================================================================
+test_mess_optimizer.py
+========================================================================================
+"""test_mess_optimizer.py - simple automated tests. Run with:  python test_mess_optimizer.py """
+from datetime import date
+
+import budget_tracker
+import data_manager
+import nutrition_analysis
+import optimizer
+
+foods = data_manager.load_foods()
+CAL, PROT = 2300.0, 70.0
+
+
+def test_normal_plan_meets_targets():
+    plan = optimizer.build_daily_plan(foods, 110, CAL, PROT)
+    assert plan["feasible"] and plan["cost"] <= 110
+    assert optimizer.targets_met(plan, CAL, PROT)
+
+
+def test_budget_below_minimum_is_infeasible():
+    cheapest_plan = optimizer.build_daily_plan(foods, 0, CAL, PROT)
+    assert cheapest_plan is not None
+    minimum_cost = cheapest_plan["cost"]
+    plan = optimizer.build_daily_plan(foods, minimum_cost - 0.01, CAL, PROT)
+    assert plan is not None and plan["feasible"] is False
+
+
+def test_boundary_budget_equal_to_cheapest_menu():
+    cheapest_plan = optimizer.build_daily_plan(foods, 10000, CAL, PROT)
+    assert cheapest_plan is not None
+    cheapest = cheapest_plan["cost"]
+    plan = optimizer.build_daily_plan(foods, cheapest, CAL, PROT)
+    assert plan is not None and plan["feasible"] and plan["cost"] <= cheapest
+
+
+def test_veg_plan_has_no_nonveg_items():
+    plan = optimizer.build_daily_plan(foods, 110, CAL, PROT, diet="veg")
+    assert all(food["diet"] == "V" for _, food in plan["items"])
+
+
+def test_no_food_repeats_within_a_day():
+    plan = optimizer.build_daily_plan(foods, 110, CAL, PROT)
+    names = [food["name"] for _, food in plan["items"]]
+    assert len(names) == len(set(names))
+
+
+def test_weekly_plan_has_seven_days_within_budget():
+    week = optimizer.build_weekly_plan(foods, 110, CAL, PROT)
+    assert len(week) == 7 and all(day["cost"] <= 110 for day in week)
+
+
+def test_score_is_zero_when_targets_met():
+    plan = optimizer.build_daily_plan(foods, 110, CAL, PROT)
+    assert plan["score"] == 0
+
+
+def test_find_food_partial_and_unknown():
+    assert nutrition_analysis.find_food(foods, "dal tadka")["name"] == "Dal Tadka"
+    assert nutrition_analysis.find_food(foods, "pizza") is None
+
+
+def test_analyse_meal_low_protein_advice():
+    _, unknown, totals, advice = nutrition_analysis.analyse_meal(foods, ["Tea", "Banana"], 110, CAL, PROT)
+    assert unknown == [] and any("Protein is low" in a for a in advice)
+
+
+def test_ranking_orders_by_protein_per_rupee():
+    _, ranked = nutrition_analysis.rank_foods(foods, "1")
+    values = [f["protein"] / f["cost"] for f in ranked]
+    assert values == sorted(values, reverse=True)
+
+
+def test_budget_alert_when_projected_overspend():
+    expenses = [{"date": date(2026, 11, d), "category": "Vegetables", "amount": 30000.0, "note": ""}
+                for d in range(1, 11)]
+    summary = budget_tracker.summarize_month(expenses, 2026, 11, 200, 3300)
+    assert any("over budget" in alert for alert in summary["alerts"])
+
+
+def test_empty_month_returns_none():
+    assert budget_tracker.summarize_month([], 2026, 11, 200, 3300) is None
+
+
+if __name__ == "__main__":
+    tests = [(name, fn) for name, fn in sorted(globals().items()) if name.startswith("test_" )]
+    passed = 0
+    for name, fn in tests:
+        try:
+            fn()
+            print(f"PASS  {name}")
+            passed += 1
+        except AssertionError:
+            print(f"FAIL  {name}")
+    print(f"\n{passed} of {len(tests)} tests passed")
