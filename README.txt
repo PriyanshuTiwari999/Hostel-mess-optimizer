@@ -1,22 +1,24 @@
-HOSTEL MESS NUTRITION & BUDGET OPTIMIZER - FIXED PROJECT
+# Hostel Mess Nutrition & Budget Optimizer
 
-Files included:
-- main.py: Main menu and program entry point
-- utils.py: Input validation and helper functions
-- data_manager.py: Food, settings, and expense CSV handling
-- optimizer.py: Daily and weekly menu optimization
-- nutrition_analysis.py: Food ranking and meal analysis
-- budget_tracker.py: Monthly expense summaries and alerts
-- report_generator.py: Text reports and charts
-- test_mess_optimizer.py: Automated tests
-- food_items.csv: Required food database (68 items)
+A menu-driven Python program that helps a hostel mess plan affordable,
+nutritionally balanced menus. Given a daily budget per student, it builds
+the best menu it can find (greedy local search) that meets calorie and
+protein targets, and it tracks monthly spending with rule-based alerts.
 
-How to run:
-1. Extract all files into the same folder.
-2. Use Python 3.10 or newer.
-3. Optional, for charts: pip install matplotlib
-4. Run: python main.py
-5. Run tests: python test_mess_optimizer.py
+## Features
+- Optimized daily and 7-day menus within budget
+- Budget scenario comparison (e.g. 80%, 100%, 120% of budget)
+- Food ranking by protein or calories per rupee
+- Analysis of what a student ate, with advice
+- Expense tracker with monthly projection and alerts
+- Weekly report (TXT) and charts (Matplotlib)
 
-The program creates settings.txt automatically if it does not exist.
-It creates expenses.csv when the first expense is recorded.
+## Run
+    python main.py
+
+Matplotlib is optional and is only needed for the charts.
+
+## Project info
+Computational Thinking and Programming (2026CSAE100), Bennett University.
+Team: Abhinav Bhandari, Shivalik Sharma, Vaibhav Dwivedi,
+Priyanshu Tiwari, Prithvi Singh.
